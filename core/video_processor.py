@@ -17,14 +17,10 @@ def get_video_duration(video_path):
                                 creationflags=subprocess.CREATE_NO_WINDOW)
 
         output = result.stdout.strip()
-        if not output:
-            return 0
-
+        if not output: return 0
         return float(output)
-
     except FileNotFoundError:
-        print("❌ 错误: 系统中未找到 'ffprobe' 命令。")
-        print("❌ 请确保已安装 FFmpeg 并将其添加到了系统环境变量 Path 中。")
+        print("❌ 错误: 系统中未找到 'ffprobe' 命令。请检查环境变量。")
         return 0
     except Exception as e:
         print(f"❌ 获取时长异常: {e}")
@@ -33,7 +29,7 @@ def get_video_duration(video_path):
 
 def process_single_video(input_path, output_path, config):
     """
-    处理单个视频：裁剪、抽帧、分辨率统一、变速
+    处理单个视频：裁剪、抽帧、分辨率统一、变速、深度去重
     """
     duration = get_video_duration(input_path)
     trim_seconds = config.get('trim', 0)
@@ -49,34 +45,52 @@ def process_single_video(input_path, output_path, config):
         print(f"跳过 {os.path.basename(input_path)}: 视频时长不足")
         return False
 
-    # 构建滤镜
+    # 构建视频滤镜链
     v_filters = []
+
+    # 1. 基础处理：抽帧
     interval = config.get('frame_interval', 1)
     if interval > 1:
         v_filters.append(f"select='not(mod(n\,{interval}))'")
         v_filters.append("setpts=N/FRAME_RATE/TB")
 
+        # 2. 深度去重：边缘裁剪 (改变分辨率指纹)
+    if config.get('dedup_crop', False):
+        crop_val = random.randint(1, 3)
+        v_filters.append(f"crop=iw-{crop_val * 2}:ih-{crop_val * 2}")
+
+    # 3. 分辨率统一
     res_mode = config.get('resolution', 'origin')
     if res_mode != 'origin':
         target_w, target_h = (1080, 1920) if res_mode == 'vertical' else (1920, 1080)
         v_filters.append(f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease")
         v_filters.append(f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2:black")
 
+    # 4. 深度去重：画面微调 (打破像素一致性)
+    if config.get('dedup_adjust', False):
+        # 随机微调亮度、对比度、饱和度
+        bright = round(random.uniform(0.98, 1.02), 3)
+        contrast = round(random.uniform(0.98, 1.02), 3)
+        sat = round(random.uniform(0.95, 1.05), 3)
+        v_filters.append(f"eq=brightness={bright - 1}:contrast={contrast}:saturation={sat}")
+
+    # 5. 深度去重：添加噪点 (改变数据特征)
+    if config.get('dedup_noise', False):
+        v_filters.append(f"noise=alls=1:allf=t")
+
+    # 6. 变速
     speed = config.get('speed', 1.0)
     if speed != 1.0:
         v_filters.append(f"setpts=PTS/{speed}")
 
+    # 音频滤镜
     a_filters = []
     if speed != 1.0:
         s = max(0.5, min(2.0, speed))
         a_filters.append(f"atempo={s}")
 
-    cmd = [
-        'ffmpeg', '-y',
-        '-ss', str(start_time),
-        '-i', input_path,
-        '-t', str(end_time - start_time),
-    ]
+    # 组装命令
+    cmd = ['ffmpeg', '-y', '-ss', str(start_time), '-i', input_path, '-t', str(end_time - start_time)]
 
     if v_filters: cmd.extend(['-vf', ','.join(v_filters)])
     if a_filters: cmd.extend(['-af', ','.join(a_filters)])
@@ -88,10 +102,9 @@ def process_single_video(input_path, output_path, config):
                        creationflags=subprocess.CREATE_NO_WINDOW)
         return True
     except subprocess.CalledProcessError:
-        # 尝试无音频重试
         try:
             if '-af' in cmd:
-                idx = cmd.index('-af')
+                idx = cmd.index('-af');
                 cmd.pop(idx);
                 cmd.pop(idx)
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
@@ -105,27 +118,17 @@ def process_single_video(input_path, output_path, config):
 
 
 def merge_with_bgm(video_list, output_path, bgm_path=None):
-    """
-    拼接视频并添加BGM，一次性完成
-    """
+    """拼接视频并添加BGM"""
     list_file = os.path.join(os.path.dirname(output_path), 'concat_list.txt')
     try:
-        # 1. 生成拼接列表 (关键：统一转换为正斜杠绝对路径)
         with open(list_file, 'w', encoding='utf-8') as f:
             for v in video_list:
-                # FFmpeg 对正斜杠兼容性最好
                 safe_path = os.path.abspath(v).replace('\\', '/')
                 f.write(f"file '{safe_path}'\n")
 
-        # 生成随机元数据用于去重
         random_hash = "hash_" + "".join(random.choices(string.ascii_letters, k=8))
-
-        # 2. 定义中间临时文件
         temp_merge = output_path + ".temp.mp4"
 
-        # 3. 第一步：拼接视频片段
-        # 如果没有BGM，直接输出最终文件并写入元数据
-        # 如果有BGM，输出临时文件
         step1_output = temp_merge if (bgm_path and os.path.exists(bgm_path)) else output_path
 
         cmd_concat = [
@@ -133,15 +136,12 @@ def merge_with_bgm(video_list, output_path, bgm_path=None):
             '-f', 'concat', '-safe', '0',
             '-i', list_file,
             '-c', 'copy',
-            '-metadata', f'comment={random_hash}',  # 写入元数据
+            '-metadata', f'comment={random_hash}',
             step1_output
         ]
-
-        # 执行拼接
         subprocess.run(cmd_concat, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
                        creationflags=subprocess.CREATE_NO_WINDOW)
 
-        # 4. 第二步：添加BGM (如果需要)
         if bgm_path and os.path.exists(bgm_path):
             cmd_bgm = [
                 'ffmpeg', '-y',
@@ -151,23 +151,19 @@ def merge_with_bgm(video_list, output_path, bgm_path=None):
                 '-map', '0:v', '-map', '[aout]',
                 '-c:v', 'copy', '-c:a', 'aac',
                 '-shortest',
-                '-metadata', f'comment={random_hash}',  # 再次保留元数据
+                '-metadata', f'comment={random_hash}',
                 output_path
             ]
             subprocess.run(cmd_bgm, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
                            creationflags=subprocess.CREATE_NO_WINDOW)
-
-            # 清理临时文件
-            if os.path.exists(temp_merge):
-                os.remove(temp_merge)
+            if os.path.exists(temp_merge): os.remove(temp_merge)
 
         return True
-
     except subprocess.CalledProcessError as e:
         print(f"❌ FFmpeg处理失败 (Exit Code: {e.returncode})")
         return False
     except Exception as e:
-        print(f"❌ 拼接异常: {e}")
+        print(f"❌ 拼接失败: {e}")
         return False
     finally:
         if os.path.exists(list_file):

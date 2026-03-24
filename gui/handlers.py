@@ -7,7 +7,6 @@ import shutil
 import json
 from datetime import datetime
 
-# 导入核心模块
 from core.scanner import ProjectScanner
 from core.draft_parser import DraftParser
 from core.replacer import MaterialReplacer
@@ -15,10 +14,8 @@ from core.generator import generate_draft_copies
 from automation.exporter import AutoExporter
 from utils.preview import get_video_thumbnail
 
-# 导入新的视频处理器
 from core.video_processor import VideoBatchProcessor
 
-# 尝试导入回收站库
 try:
     from send2trash import send2trash
 
@@ -28,10 +25,6 @@ except ImportError:
 
 
 class ProjectHandlers:
-    """
-    项目管理相关的逻辑：扫描、重命名、删除、选择
-    """
-
     def refresh_projects(self):
         self.projects_data = ProjectScanner.scan_projects(self.current_scan_path.get())
         self.listbox_projects.delete(0, tk.END)
@@ -145,10 +138,6 @@ class ProjectHandlers:
 
 
 class MaterialHandlers:
-    """
-    素材管理相关的逻辑：添加、预览
-    """
-
     def add_videos(self):
         files = filedialog.askopenfilenames(filetypes=[("Video", "*.mp4 *.mov *.avi")])
         for f in files:
@@ -179,10 +168,6 @@ class MaterialHandlers:
 
 
 class TaskHandlers:
-    """
-    核心任务逻辑：替换、生成、导出
-    """
-
     def backup_draft(self):
         if not self.current_draft_path: return
         backup_dir = os.path.join(os.path.dirname(self.current_draft_path), "backups")
@@ -278,10 +263,6 @@ class TaskHandlers:
 
 
 class VideoProcessHandlers:
-    """
-    视频批量处理逻辑
-    """
-
     def select_process_folder(self):
         folder = filedialog.askdirectory(title="选择素材文件夹")
         if folder:
@@ -302,7 +283,6 @@ class VideoProcessHandlers:
         """更新进度条的回调函数"""
         self.progress_bar['value'] = (current / total) * 100
         self.progress_label.config(text=f"处理进度: {current}/{total}")
-        # self.root.update_idletasks() # after(0) 已经可以保证UI更新
 
     def run_video_process(self):
         input_path = self.process_input_path.get()
@@ -313,13 +293,16 @@ class VideoProcessHandlers:
             return
 
         try:
-            # 收集配置参数
             config = {
                 'trim': int(self.trim_seconds.get()),
                 'frame_interval': int(self.frame_interval.get()),
                 'speed': float(self.speed_var.get()),
                 'resolution': self.resolution_var.get(),
-                'bgm_path': self.bgm_path.get()
+                'bgm_path': self.bgm_path.get(),
+                # 新增去重参数
+                'dedup_adjust': self.dedup_adjust.get(),
+                'dedup_noise': self.dedup_noise.get(),
+                'dedup_crop': self.dedup_crop.get()
             }
 
             if config['trim'] < 0 or config['frame_interval'] < 1:
@@ -336,10 +319,7 @@ class VideoProcessHandlers:
             self.btn_start_process.config(state="disabled")
             print("========== 开始视频处理任务 ==========")
 
-            # 实例化处理器，传入进度回调
             processor = VideoBatchProcessor(log_func=print, progress_callback=self.update_progress)
-
-            # 绑定 root 用于进度回调的 UI 更新
             processor.root = self.root
 
             success = processor.run(input_path, output_path, config)

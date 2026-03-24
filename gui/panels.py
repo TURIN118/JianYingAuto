@@ -191,6 +191,21 @@ def _build_process_tab(parent, app):
     ttk.Button(row_bgm, text="选择音乐", command=app.select_bgm).pack(side=tk.LEFT)
     ttk.Button(row_bgm, text="清除", command=lambda: app.bgm_path.set("")).pack(side=tk.LEFT, padx=2)
 
+    # 深度去重选项
+    dedup_frame = ttk.LabelFrame(parent, text="5. 深度去重 (原创度提升)")
+    dedup_frame.pack(fill=tk.X, padx=10, pady=5)
+
+    row_dedup1 = ttk.Frame(dedup_frame)
+    row_dedup1.pack(fill=tk.X, padx=5, pady=2)
+    ttk.Checkbutton(row_dedup1, text="画面微调 (随机亮度/对比度)", variable=app.dedup_adjust).pack(side=tk.LEFT, padx=5)
+    ttk.Checkbutton(row_dedup1, text="随机噪点 (轻微颗粒感)", variable=app.dedup_noise).pack(side=tk.LEFT, padx=5)
+
+    row_dedup2 = ttk.Frame(dedup_frame)
+    row_dedup2.pack(fill=tk.X, padx=5, pady=2)
+    ttk.Checkbutton(row_dedup2, text="边缘裁剪 (去除边缘像素，改变分辨率)", variable=app.dedup_crop).pack(side=tk.LEFT,
+                                                                                                         padx=5)
+    ttk.Label(row_dedup2, text="← 推荐全选以获得最佳去重效果", foreground="gray").pack(side=tk.LEFT, padx=5)
+
     # 操作按钮与进度条
     action_frame = ttk.Frame(parent)
     action_frame.pack(fill=tk.X, padx=10, pady=20)
@@ -198,12 +213,11 @@ def _build_process_tab(parent, app):
     app.btn_start_process = ttk.Button(action_frame, text="🚀 开始批量处理并拼接", command=app.run_video_process)
     app.btn_start_process.pack(pady=5)
 
-    # 进度条
     app.progress_bar = ttk.Progressbar(action_frame, length=400, mode='determinate')
     app.progress_bar.pack(pady=5)
     app.progress_label = ttk.Label(action_frame, text="等待开始...")
     app.progress_label.pack()
 
     # 说明
-    desc = "流程: 排序 -> 裁剪/抽帧/变速/统一尺寸 -> 拼接 -> 添加BGM -> 修改MD5"
+    desc = "流程: 排序 -> 裁剪/抽帧/变速/统一尺寸 -> 深度去重 -> 拼接 -> 添加BGM"
     ttk.Label(parent, text=desc, foreground="#666").pack(pady=10)

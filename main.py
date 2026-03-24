@@ -4,13 +4,8 @@ from tkinter import ttk
 import sys
 import os
 
-# 导入界面构建模块
 from gui.panels import setup_left_panel, setup_right_panel
-
-# 导入业务逻辑模块
 from gui.handlers import ProjectHandlers, MaterialHandlers, TaskHandlers, VideoProcessHandlers
-
-# 导入配置和日志工具
 from utils.config import load_config, save_config
 from utils.logger import TextHandler
 
@@ -18,15 +13,13 @@ from utils.logger import TextHandler
 class App(ProjectHandlers, MaterialHandlers, TaskHandlers, VideoProcessHandlers, object):
     def __init__(self, root):
         self.root = root
-        self.root.title("剪映批量助手 Pro v5.0 (专业混剪版)")
-        self.root.geometry("1050x750")
+        self.root.title("剪映批量助手 Pro v6.0 (深度去重版)")
+        self.root.geometry("1050x780")
 
-        # 1. 样式设置
         style = ttk.Style()
         style.theme_use('clam')
 
-        # 2. 初始化变量
-        # -- 草稿替换模块变量 --
+        # 初始化变量
         self.projects_data = []
         self.current_draft_path = None
         self.new_videos = []
@@ -34,18 +27,19 @@ class App(ProjectHandlers, MaterialHandlers, TaskHandlers, VideoProcessHandlers,
         self.jianying_exe_path = tk.StringVar()
         self.exporter_instance = None
 
-        # -- 视频处理模块变量 --
         self.process_input_path = tk.StringVar()
         self.process_output_path = tk.StringVar()
         self.trim_seconds = tk.StringVar(value="2")
         self.frame_interval = tk.StringVar(value="1")
-
-        # 新增：视频处理高级变量
         self.speed_var = tk.StringVar(value="1.0")
         self.resolution_var = tk.StringVar(value="origin")
         self.bgm_path = tk.StringVar()
 
-        # 3. 构建界面
+        # 新增：去重布尔变量
+        self.dedup_adjust = tk.BooleanVar(value=True)
+        self.dedup_noise = tk.BooleanVar(value=False)
+        self.dedup_crop = tk.BooleanVar(value=True)
+
         self._setup_menus()
 
         main_pane = tk.PanedWindow(self.root, orient=tk.HORIZONTAL)
@@ -59,12 +53,10 @@ class App(ProjectHandlers, MaterialHandlers, TaskHandlers, VideoProcessHandlers,
         main_pane.add(right_frame)
         setup_right_panel(right_frame, self)
 
-        # 4. 初始化配置
         self._init_path_config()
         self.redirect_logs()
 
     def _setup_menus(self):
-        """设置菜单栏"""
         menubar = tk.Menu(self.root)
         settings_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="设置", menu=settings_menu)
@@ -72,13 +64,11 @@ class App(ProjectHandlers, MaterialHandlers, TaskHandlers, VideoProcessHandlers,
         self.root.config(menu=menubar)
 
     def _init_path_config(self):
-        """初始化路径配置"""
         config = load_config()
         saved_path = config.get("custom_path")
         if saved_path and os.path.exists(saved_path):
             self.current_scan_path.set(saved_path)
         else:
-            # 默认路径设置
             default_path = r"D:\DATA\JianYing\draft\JianyingPro Drafts"
             if not os.path.exists(default_path):
                 from core.scanner import ProjectScanner
