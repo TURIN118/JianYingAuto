@@ -1,0 +1,7 @@
+moviepy==1.0.3
+pyautogui
+Pillow
+psutil
+pygetwindow
+opencv-python
+send2trash
